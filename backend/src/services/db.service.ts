@@ -128,6 +128,42 @@ export const getUserByEmail = async (payload: EmailPayload) => {
   }
 };
 
+export const getUserForAuthentication = async (payload: EmailPayload) => {
+  try {
+    const { email } = payload;
+
+    const user = await prisma.user.findUnique({
+      where: {
+        email: email,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        passwordHash: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
+
+    return {
+      success: true,
+      user,
+    };
+  } catch (error: any) {
+    console.error("Error fetching user for authentication:", error);
+    throw error;
+  }
+};
+
 // SESSION SERVICES
 
 export const createSession = async ({
