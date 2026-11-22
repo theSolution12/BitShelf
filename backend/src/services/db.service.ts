@@ -135,7 +135,7 @@ export const createSession = async ({
   expireInDays = 7,
 }: {
   userId: string;
-  expireInDays: number;
+  expireInDays?: number;
 }) => {
   try {
     const rawToken = crypto.randomBytes(32).toString("hex");
@@ -214,7 +214,7 @@ export const getSessionByToken = async (payload: TokenPaylaod) => {
       };
     }
 
-    if (new Date() > session.expiresAt) {
+    if (session.expiresAt <= new Date()) {
       return {
         success: false,
         message: "Session expired",
@@ -226,12 +226,6 @@ export const getSessionByToken = async (payload: TokenPaylaod) => {
       session,
     };
   } catch (error: any) {
-    if (error.code === "P2025") {
-      return {
-        success: false,
-        message: "Session not found",
-      };
-    }
     console.error("Error fetching session by token:", error);
     throw error;
   }
@@ -245,11 +239,28 @@ export async function revokeSession(payload: TokenPaylaod) {
       .update(rawToken)
       .digest("hex");
 
-    const updatedSession = await prisma.session.update({
+    const session = await prisma.session.findUnique({
       where: { tokenHash },
-      data: {
-        revokedAt: new Date(),
-      },
+      select: { revokedAt: true },
+    });
+
+    if (!session) {
+      return {
+        success: false,
+        message: "Session not found",
+      };
+    }
+
+    if (session.revokedAt) {
+      return {
+        success: true,
+        message: "Session already revoked",
+      };
+    }
+
+    await prisma.session.update({
+      where: { tokenHash },
+      data: { revokedAt: new Date() },
     });
 
     return {
