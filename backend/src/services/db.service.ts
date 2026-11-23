@@ -582,7 +582,8 @@ export const getDeploymentById = async (
 };
 
 export const updateDeployment = async (
-  payload: DeploymentIdPayload & Partial<CreateDeploymentPayload>,
+  payload: DeploymentIdPayload &
+    Partial<Omit<CreateDeploymentPayload, "projectId" | "userId">>,
 ) => {
   try {
     const { deploymentId, ...updateData } = payload;
@@ -650,6 +651,45 @@ export const getProjectDeployments = async (
     };
   } catch (error: any) {
     console.error("Error fetching project deployments:", error);
+    throw error;
+  }
+};
+
+export const getUserDeployments = async (payload: UserIdPayload) => {
+  try {
+    const { userId } = payload;
+
+    const deployments = await prisma.deployment.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        commitSha: true,
+        status: true,
+        projectId: true,
+        containerId: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        stoppedAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!deployments || deployments.length === 0) {
+      return {
+        success: false,
+        message: "No deployments found for this user",
+      };
+    }
+
+    return {
+      success: true,
+      deployments,
+    };
+  } catch (error: any) {
+    console.error("Error fetching user deployments:", error);
     throw error;
   }
 };
