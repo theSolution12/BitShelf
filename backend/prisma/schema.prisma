@@ -103,15 +103,9 @@ model Deployment {
   @@map("deployments")
 }
 
-enum OtpPurpose {
-  VERIFY_EMAIL
-  LOGIN
-}
-
 model OtpCode {
-  id       String     @id @default(uuid())
+  id       String @id @default(uuid())
   codeHash String
-  purpose  OtpPurpose
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -122,6 +116,6 @@ model OtpCode {
 
   createdAt DateTime @default(now())
 
-  @@index([userId, purpose])
+  @@index([userId])
   @@map("otp_codes")
 }
