@@ -101,6 +101,11 @@ export const checkSession = async (payload: TokenPayload) => {
       message: "Session expired",
     };
   }
+
+  return {
+    success: true,
+    session,
+  };
 };
 
 export const revokeSession = async (payload: TokenPayload) => {
