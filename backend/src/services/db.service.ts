@@ -25,7 +25,7 @@ export interface CreateProjectPayload {
   name: string;
   branch: string;
   userId: string;
-  projectPath: string;
+  dockerfilePath: string;
 }
 
 export interface ProjectIdPayload {
@@ -342,7 +342,7 @@ export async function revokeSession(payload: TokenPaylaod) {
 
 export const createProject = async (payload: CreateProjectPayload) => {
   try {
-    const { repositoryUrl, name, branch, userId, projectPath } = payload;
+    const { repositoryUrl, name, branch, userId, dockerfilePath } = payload;
 
     const project = await prisma.project.create({
       data: {
@@ -350,7 +350,7 @@ export const createProject = async (payload: CreateProjectPayload) => {
         name,
         branch,
         userId,
-        projectPath,
+        dockerfilePath,
       },
       select: {
         id: true,

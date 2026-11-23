@@ -53,7 +53,7 @@ model Project {
   name          String
   repositoryUrl String
   branch        String @default("main")
-  projectPath   String @default(".")
+  dockerfilePath   String @default(".")
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -67,7 +67,7 @@ model Project {
   @@map("projects")
 }
 
-enum Status {
+enum DeploymentStatus {
   QUEUED
   CLONING
   BUILDING
@@ -83,7 +83,7 @@ model Deployment {
   id String @id @default(uuid())
 
   commitSha String
-  status    Status @default(QUEUED)
+  status    DeploymentStatus @default(QUEUED)
 
   containerId String?
 
