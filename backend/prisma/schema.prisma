@@ -23,6 +23,7 @@ model User {
   sessions Session[]
   projects Project[]
   deployments Deployment[]
+  otpCodes OtpCode[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -100,4 +101,27 @@ model Deployment {
 
   @@index([projectId, createdAt])
   @@map("deployments")
+}
+
+enum OtpPurpose {
+  VERIFY_EMAIL
+  LOGIN
+}
+
+model OtpCode {
+  id       String     @id @default(uuid())
+  codeHash String
+  purpose  OtpPurpose
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose])
+  @@map("otp_codes")
 }
