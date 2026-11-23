@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import type { Status } from "../generated/prisma/enums.js";
 
 export interface CreateUserPayload {
   email: string;
@@ -30,6 +31,17 @@ export interface CreateProjectPayload {
 
 export interface ProjectIdPayload {
   projectId: string;
+}
+
+export interface CreateDeploymentPayload {
+  commitSha: string;
+  status: Status;
+  projectId: string;
+  containerId?: string;
+}
+
+export interface DeploymentIdPayload {
+  deploymentId: string;
 }
 
 // USER SERVICES
@@ -489,6 +501,141 @@ export const deleteProject = async (payload: ProjectIdPayload) => {
     };
   } catch (error: any) {
     console.error("Error deleting project:", error);
+    throw error;
+  }
+};
+
+// DEPLOYMENT SERVICES
+
+export const createDeployment = async (payload: CreateDeploymentPayload) => {
+  try {
+    const { commitSha, status, projectId, containerId } = payload;
+
+    const deployment = await prisma.deployment.create({
+      data: {
+        commitSha,
+        status,
+        projectId,
+        ...(containerId ? { containerId } : {}),
+      },
+      select: {
+        id: true,
+        commitSha: true,
+        status: true,
+        projectId: true,
+        containerId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      deployment,
+    };
+  } catch (error: any) {
+    console.error("Error creating deployment:", error);
+    throw error;
+  }
+};
+
+export const getDeploymentById = async (payload: DeploymentIdPayload) => {
+  try {
+    const { deploymentId } = payload;
+
+    const deployment = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      select: {
+        id: true,
+        commitSha: true,
+        status: true,
+        projectId: true,
+        containerId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!deployment) {
+      return {
+        success: false,
+        message: "Deployment not found",
+      };
+    }
+
+    return {
+      success: true,
+      deployment,
+    };
+  } catch (error: any) {
+    console.error("Error fetching deployment:", error);
+    throw error;
+  }
+};
+
+export const updateDeployment = async (
+  payload: DeploymentIdPayload & Partial<CreateDeploymentPayload>,
+) => {
+  try {
+    const { deploymentId, ...updateData } = payload;
+
+    const deployment = await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: updateData,
+      select: {
+        id: true,
+        commitSha: true,
+        status: true,
+        projectId: true,
+        containerId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      deployment,
+    };
+  } catch (error: any) {
+    console.error("Error updating deployment:", error);
+    throw error;
+  }
+};
+
+export const getProjectDeployments = async (payload: ProjectIdPayload) => {
+  try {
+    const { projectId } = payload;
+
+    const deployments = await prisma.deployment.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        commitSha: true,
+        status: true,
+        projectId: true,
+        containerId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!deployments || deployments.length === 0) {
+      return {
+        success: false,
+        message: "No deployments found for this project",
+      };
+    }
+
+    return {
+      success: true,
+      deployments,
+    };
+  } catch (error: any) {
+    console.error("Error fetching project deployments:", error);
     throw error;
   }
 };
