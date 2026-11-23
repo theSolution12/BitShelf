@@ -99,13 +99,6 @@ export const getUserById = async (payload: UserIdPayload) => {
       },
     });
 
-    if (!user) {
-      return {
-        success: false,
-        message: "User not found",
-      };
-    }
-
     return {
       success: true,
       user,
@@ -133,13 +126,6 @@ export const getUserByEmail = async (payload: EmailPayload) => {
         updatedAt: true,
       },
     });
-
-    if (!user) {
-      return {
-        success: false,
-        message: "User not found",
-      };
-    }
 
     return {
       success: true,
@@ -169,13 +155,6 @@ export const getUserForAuthentication = async (payload: EmailPayload) => {
         updatedAt: true,
       },
     });
-
-    if (!user) {
-      return {
-        success: false,
-        message: "User not found",
-      };
-    }
 
     return {
       success: true,
