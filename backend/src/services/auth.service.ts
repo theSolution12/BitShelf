@@ -1,13 +1,14 @@
+import bcrypt from "bcrypt";
+import crypto from "crypto";
 import {
   createSession,
   createUser,
   getSessionByToken,
-  getUserByEmail,
   getUserForAuthentication,
   updateSession,
+  replaceOtp,
 } from "./db.service.js";
-import bcrypt from "bcrypt";
-import crypto from "crypto";
+import { sendOtpEmail } from "../lib/mailer.js";
 
 export interface RegisterPayload {
   email: string;
@@ -137,4 +138,28 @@ export const revokeSession = async (payload: TokenPayload) => {
     success: true,
     message: "Session revoked successfully",
   };
+};
+
+const hashOtp = (userId: string, code: string) => {
+  return crypto
+    .createHmac("sha256", process.env.OTP_SECRET!)
+    .update(`${userId}:${code}`)
+    .digest("hex");
+};
+
+export const otpSend = async ({
+  userId,
+  email,
+}: {
+  userId: string;
+  email: string;
+}) => {
+  const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
+  const codeHash = hashOtp(userId, code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await replaceOtp({ userId, codeHash, expiresAt });
+  await sendOtpEmail({ to: email, code });
+
+  return { success: true };
 };

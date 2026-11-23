@@ -622,3 +622,27 @@ export const getUserDeployments = async (payload: UserIdPayload) => {
     throw error;
   }
 };
+
+// OTP SERVICES
+
+export const replaceOtp = async ({
+  userId,
+  codeHash,
+  expiresAt,
+}: {
+  userId: string;
+  codeHash: string;
+  expiresAt: Date;
+}) => {
+  try {
+    await prisma.$transaction([
+      prisma.otpCode.deleteMany({ where: { userId } }),
+      prisma.otpCode.create({ data: { userId, codeHash, expiresAt } }),
+    ]);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error replacing OTP:", error);
+    throw error;
+  }
+};
