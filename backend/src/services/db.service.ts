@@ -613,12 +613,14 @@ export const updateDeployment = async (
   }
 };
 
-export const getProjectDeployments = async (payload: ProjectIdPayload) => {
+export const getProjectDeployments = async (
+  payload: ProjectIdPayload & UserIdPayload,
+) => {
   try {
-    const { projectId } = payload;
+    const { projectId, userId } = payload;
 
     const deployments = await prisma.deployment.findMany({
-      where: { projectId },
+      where: { projectId, userId },
       select: {
         id: true,
         commitSha: true,
