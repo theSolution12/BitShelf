@@ -525,6 +525,8 @@ export const createDeployment = async (payload: CreateDeploymentPayload) => {
         containerId: true,
         createdAt: true,
         updatedAt: true,
+        startedAt: true,
+        stoppedAt: true,
       },
     });
 
@@ -557,6 +559,8 @@ export const getDeploymentById = async (
         containerId: true,
         createdAt: true,
         updatedAt: true,
+        startedAt: true,
+        stoppedAt: true,
       },
     });
 
@@ -594,6 +598,8 @@ export const updateDeployment = async (
         containerId: true,
         createdAt: true,
         updatedAt: true,
+        startedAt: true,
+        stoppedAt: true,
       },
     });
 
@@ -621,6 +627,8 @@ export const getProjectDeployments = async (payload: ProjectIdPayload) => {
         containerId: true,
         createdAt: true,
         updatedAt: true,
+        startedAt: true,
+        stoppedAt: true,
       },
       orderBy: {
         createdAt: "desc",
