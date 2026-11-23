@@ -374,12 +374,14 @@ export const createProject = async (payload: CreateProjectPayload) => {
   }
 };
 
-export const getProjectById = async (payload: ProjectIdPayload) => {
+export const getProjectById = async (
+  payload: ProjectIdPayload & UserIdPayload,
+) => {
   try {
-    const { projectId } = payload;
+    const { projectId, userId } = payload;
 
     const project = await prisma.project.findUnique({
-      where: { id: projectId },
+      where: { id: projectId, userId: userId },
       select: {
         id: true,
         repositoryUrl: true,
@@ -536,12 +538,17 @@ export const createDeployment = async (payload: CreateDeploymentPayload) => {
   }
 };
 
-export const getDeploymentById = async (payload: DeploymentIdPayload) => {
+export const getDeploymentById = async (
+  payload: DeploymentIdPayload & UserIdPayload,
+) => {
   try {
-    const { deploymentId } = payload;
+    const { deploymentId, userId } = payload;
 
     const deployment = await prisma.deployment.findUnique({
-      where: { id: deploymentId },
+      where: {
+        id: deploymentId,
+        userId: userId,
+      },
       select: {
         id: true,
         commitSha: true,
