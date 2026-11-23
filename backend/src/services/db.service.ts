@@ -15,8 +15,8 @@ export interface EmailPayload {
   email: string;
 }
 
-export interface TokenPaylaod {
-  rawToken: string;
+export interface TokenHashPaylaod {
+  tokenHash: string;
 }
 
 export interface CreateProjectPayload {
@@ -166,21 +166,14 @@ export const getUserForAuthentication = async (payload: EmailPayload) => {
 
 export const createSession = async ({
   userId,
-  expireInDays = 7,
+  expiryDate,
+  tokenHash,
 }: {
   userId: string;
-  expireInDays?: number;
+  expiryDate: Date;
+  tokenHash: string;
 }) => {
   try {
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(rawToken)
-      .digest("hex");
-
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + expireInDays);
-
     const session = await prisma.session.create({
       data: {
         userId: userId,
@@ -201,7 +194,6 @@ export const createSession = async ({
 
     return {
       success: true,
-      token: rawToken,
       session,
     };
   } catch (error: any) {
@@ -210,14 +202,10 @@ export const createSession = async ({
   }
 };
 
-export const getSessionByToken = async (payload: TokenPaylaod) => {
+export const getSessionByToken = async (payload: TokenHashPaylaod) => {
   try {
-    const { rawToken } = payload;
+    const { tokenHash } = payload;
 
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(rawToken)
-      .digest("hex");
     const session = await prisma.session.findUnique({
       where: {
         tokenHash: tokenHash,
@@ -234,27 +222,6 @@ export const getSessionByToken = async (payload: TokenPaylaod) => {
       },
     });
 
-    if (!session) {
-      return {
-        success: false,
-        message: "No session found",
-      };
-    }
-
-    if (session.revokedAt) {
-      return {
-        success: false,
-        message: "Session revoked",
-      };
-    }
-
-    if (session.expiresAt <= new Date()) {
-      return {
-        success: false,
-        message: "Session expired",
-      };
-    }
-
     return {
       success: true,
       session,
@@ -265,41 +232,28 @@ export const getSessionByToken = async (payload: TokenPaylaod) => {
   }
 };
 
-export async function revokeSession(payload: TokenPaylaod) {
+export const updateSession = async (
+  payload: TokenHashPaylaod & Partial<{ revokedAt: Date; expiresAt: Date }>,
+) => {
   try {
-    const { rawToken } = payload;
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(rawToken)
-      .digest("hex");
+    const { tokenHash, revokedAt } = payload;
 
-    const session = await prisma.session.findUnique({
-      where: { tokenHash },
-      select: { revokedAt: true },
-    });
-
-    if (!session) {
-      return {
-        success: false,
-        message: "Session not found",
-      };
-    }
-
-    if (session.revokedAt) {
-      return {
-        success: true,
-        message: "Session already revoked",
-      };
+    if (!revokedAt) {
+      throw new Error("revokedAt is required for updating session");
     }
 
     await prisma.session.update({
-      where: { tokenHash },
-      data: { revokedAt: new Date() },
+      where: {
+        tokenHash,
+      },
+      data: {
+        revokedAt: revokedAt,
+      },
     });
 
     return {
       success: true,
-      message: "Session revoked successfully",
+      message: "Session updated successfully",
     };
   } catch (error: any) {
     if (error.code === "P2025") {
@@ -308,10 +262,10 @@ export async function revokeSession(payload: TokenPaylaod) {
         message: "Session not found",
       };
     }
-    console.error("Error revoking session:", error);
+    console.error("Error updating session:", error);
     throw error;
   }
-}
+};
 
 // PROJECT SERVICES
 
