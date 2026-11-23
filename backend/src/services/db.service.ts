@@ -1,10 +1,9 @@
 import prisma from "../lib/prisma.js";
-import bcrypt from "bcrypt";
 import crypto from "crypto";
 
 export interface CreateUserPayload {
   email: string;
-  password: string;
+  passwordHash: string;
   name?: string;
 }
 
@@ -45,10 +44,7 @@ export interface DeploymentIdPayload {
 // USER SERVICES
 
 export const createUser = async (payload: CreateUserPayload) => {
-  const { email, password, name } = payload;
-
-  const saltRounds = 11;
-  const passwordHash: string = await bcrypt.hash(password, saltRounds);
+  const { email, passwordHash, name } = payload;
 
   try {
     const user = await prisma.user.create({
