@@ -1,7 +1,6 @@
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import type { Status } from "../generated/prisma/enums.js";
 
 export interface CreateUserPayload {
   email: string;
@@ -35,9 +34,7 @@ export interface ProjectIdPayload {
 
 export interface CreateDeploymentPayload {
   commitSha: string;
-  status: Status;
   projectId: string;
-  containerId?: string;
 }
 
 export interface DeploymentIdPayload {
@@ -509,14 +506,12 @@ export const deleteProject = async (payload: ProjectIdPayload) => {
 
 export const createDeployment = async (payload: CreateDeploymentPayload) => {
   try {
-    const { commitSha, status, projectId, containerId } = payload;
+    const { commitSha, projectId } = payload;
 
     const deployment = await prisma.deployment.create({
       data: {
         commitSha,
-        status,
         projectId,
-        ...(containerId ? { containerId } : {}),
       },
       select: {
         id: true,
