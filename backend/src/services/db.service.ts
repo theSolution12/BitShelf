@@ -19,6 +19,19 @@ export interface EmailPayload {
 export interface TokenPaylaod {
   rawToken: string;
 }
+
+export interface CreateProjectPayload {
+  repositoryUrl: string;
+  name: string;
+  branch: string;
+  userId: string;
+  projectPath: string;
+}
+
+export interface ProjectIdPayload {
+  projectId: string;
+}
+
 // USER SERVICES
 
 export const createUser = async (payload: CreateUserPayload) => {
@@ -314,3 +327,168 @@ export async function revokeSession(payload: TokenPaylaod) {
     throw error;
   }
 }
+
+// PROJECT SERVICES
+
+export const createProject = async (payload: CreateProjectPayload) => {
+  try {
+    const { repositoryUrl, name, branch, userId, projectPath } = payload;
+
+    const project = await prisma.project.create({
+      data: {
+        repositoryUrl,
+        name,
+        branch,
+        userId,
+        projectPath,
+      },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+        branch: true,
+        userId: true,
+        projectPath: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      project,
+    };
+  } catch (error: any) {
+    console.error("Error creating project:", error);
+    throw error;
+  }
+};
+
+export const getProjectById = async (payload: ProjectIdPayload) => {
+  try {
+    const { projectId } = payload;
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+        branch: true,
+        userId: true,
+        projectPath: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!project) {
+      return {
+        success: false,
+        message: "Project not found",
+      };
+    }
+
+    return {
+      success: true,
+      project,
+    };
+  } catch (error: any) {
+    console.error("Error fetching project by ID:", error);
+    throw error;
+  }
+};
+
+export const getUserProjects = async (payload: UserIdPayload) => {
+  try {
+    const { userId } = payload;
+
+    const projects = await prisma.project.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+        branch: true,
+        userId: true,
+        projectPath: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!projects || projects.length === 0) {
+      return {
+        success: false,
+        message: "No projects found for this user",
+      };
+    }
+
+    return {
+      success: true,
+      projects,
+    };
+  } catch (error: any) {
+    console.error("Error fetching user projects:", error);
+    throw error;
+  }
+};
+
+export const updateProject = async (
+  payload: ProjectIdPayload & Partial<CreateProjectPayload>,
+) => {
+  try {
+    const { projectId, ...updateData } = payload;
+
+    const project = await prisma.project.update({
+      where: { id: projectId },
+      data: updateData,
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+        branch: true,
+        userId: true,
+        projectPath: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      project,
+    };
+  } catch (error: any) {
+    console.error("Error updating project:", error);
+    throw error;
+  }
+};
+
+export const deleteProject = async (payload: ProjectIdPayload) => {
+  try {
+    const { projectId } = payload;
+
+    const project = await prisma.project.delete({
+      where: { id: projectId },
+      select: {
+        id: true,
+        repositoryUrl: true,
+        name: true,
+        branch: true,
+        userId: true,
+        projectPath: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      project,
+    };
+  } catch (error: any) {
+    console.error("Error deleting project:", error);
+    throw error;
+  }
+};
