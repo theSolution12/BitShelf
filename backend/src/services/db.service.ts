@@ -35,6 +35,7 @@ export interface ProjectIdPayload {
 export interface CreateDeploymentPayload {
   commitSha: string;
   projectId: string;
+  userId: string;
 }
 
 export interface DeploymentIdPayload {
@@ -506,12 +507,13 @@ export const deleteProject = async (payload: ProjectIdPayload) => {
 
 export const createDeployment = async (payload: CreateDeploymentPayload) => {
   try {
-    const { commitSha, projectId } = payload;
+    const { commitSha, projectId, userId } = payload;
 
     const deployment = await prisma.deployment.create({
       data: {
         commitSha,
         projectId,
+        userId,
       },
       select: {
         id: true,
