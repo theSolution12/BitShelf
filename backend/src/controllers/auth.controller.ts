@@ -7,6 +7,7 @@ import {
   otpVerify,
 } from "../services/auth.service.js";
 import type { Request, Response } from "express";
+import logger from "./logger.js";
 
 const SESSION_DAYS = 7;
 
@@ -55,7 +56,7 @@ export const registerController = async (req: Request, res: Response) => {
       user: result.user,
     });
   } catch (error: any) {
-    console.error("registerController:", error);
+    logger.error("registerController:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -87,7 +88,7 @@ export const loginController = async (req: Request, res: Response) => {
     await startSession(res, result.user.id);
     return res.status(200).json({ user: result.user });
   } catch (error: any) {
-    console.error("loginController:", error);
+    logger.error("loginController:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -104,7 +105,7 @@ export const otpRequestController = async (req: Request, res: Response) => {
     const result = await otpRequest({ email });
     return res.status(200).json({ message: result.message });
   } catch (error: any) {
-    console.error("otpRequestController:", error);
+    logger.error("otpRequestController:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -133,7 +134,7 @@ export const otpVerifyController = async (req: Request, res: Response) => {
     await startSession(res, result.user.id);
     return res.status(200).json({ user: result.user });
   } catch (error: any) {
-    console.error("otpVerifyController:", error);
+    logger.error("otpVerifyController:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -149,7 +150,7 @@ export const logoutController = async (req: Request, res: Response) => {
     res.clearCookie("session", { ...cookieOptions, maxAge: undefined });
     return res.status(200).json({ message: "Logged out" });
   } catch (error: any) {
-    console.error("logoutController:", error);
+    logger.error("logoutController:", error);
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
