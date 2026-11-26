@@ -5,9 +5,10 @@ import {
   revokeSession,
   otpRequest,
   otpVerify,
+  EMAIL_NOT_VERIFIED_MESSAGE,
 } from "../services/auth.service.js";
 import type { Request, Response } from "express";
-import logger from "./logger.js";
+import logger from "../lib/logger.js";
 
 const SESSION_DAYS = 7;
 
@@ -23,12 +24,17 @@ const isText = (value: unknown): value is string =>
 
 // Creates the session and puts the ticket in the browser's cookie.
 const startSession = async (res: Response, userId: string) => {
-  const { rawToken } = await sessionCreate({
-    userId,
-    expireInDays: SESSION_DAYS,
-  });
-  res.cookie("session", rawToken, cookieOptions);
+  const created = await sessionCreate({ userId, expireInDays: SESSION_DAYS });
+
+  if (!created.success || !created.rawToken) {
+    throw new Error(created.message);
+  }
+
+  res.cookie("session", created.rawToken, cookieOptions);
 };
+
+// Logger rule: data goes FIRST, the message goes SECOND.
+//   logger.error({ err: error }, "what was happening");
 
 export const registerController = async (req: Request, res: Response) => {
   try {
@@ -47,8 +53,11 @@ export const registerController = async (req: Request, res: Response) => {
     const result = await register({ email, password, name });
 
     if (!result.success) {
+      logger.info(`registerController: ${result.message}`);
       return res.status(409).json({ message: result.message });
     }
+
+    logger.success("registerController: registration successful");
 
     // No session yet. They must verify their email first.
     return res.status(201).json({
@@ -56,7 +65,7 @@ export const registerController = async (req: Request, res: Response) => {
       user: result.user,
     });
   } catch (error: any) {
-    logger.error("registerController:", error);
+    logger.error({ err: error }, "registerController failed");
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -72,11 +81,9 @@ export const loginController = async (req: Request, res: Response) => {
     const result = await login({ email, password });
 
     if (!result.success) {
-      // 403 + code tells the frontend to open the verify-email page.
-      if (result.code === "EMAIL_NOT_VERIFIED") {
-        return res
-          .status(403)
-          .json({ code: result.code, message: result.message });
+      // Status 403 tells the frontend to open the verify-email page.
+      if (result.message === EMAIL_NOT_VERIFIED_MESSAGE) {
+        return res.status(403).json({ message: result.message });
       }
       return res.status(401).json({ message: result.message });
     }
@@ -86,9 +93,11 @@ export const loginController = async (req: Request, res: Response) => {
     }
 
     await startSession(res, result.user.id);
-    return res.status(200).json({ user: result.user });
+
+    logger.success("loginController: login successful");
+    return res.status(200).json({ message: result.message, user: result.user });
   } catch (error: any) {
-    logger.error("loginController:", error);
+    logger.error({ err: error }, "loginController failed");
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -105,7 +114,7 @@ export const otpRequestController = async (req: Request, res: Response) => {
     const result = await otpRequest({ email });
     return res.status(200).json({ message: result.message });
   } catch (error: any) {
-    logger.error("otpRequestController:", error);
+    logger.error({ err: error }, "otpRequestController failed");
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -123,18 +132,20 @@ export const otpVerifyController = async (req: Request, res: Response) => {
 
     const result = await otpVerify({ email, code: code.trim() });
 
-    if (!result.user) {
+    if (!result.success) {
       return res.status(401).json({ message: result.message });
     }
 
-    if (!result.success || !result.user) {
-      return res.status(401).json({ message: result.message });
+    if (!result.user) {
+      return res.status(401).json({ message: "Invalid or expired code" });
     }
 
     await startSession(res, result.user.id);
-    return res.status(200).json({ user: result.user });
+
+    logger.success("otpVerifyController: code verified");
+    return res.status(200).json({ message: result.message, user: result.user });
   } catch (error: any) {
-    logger.error("otpVerifyController:", error);
+    logger.error({ err: error }, "otpVerifyController failed");
     return res.status(500).json({ message: "Something went wrong" });
   }
 };
@@ -150,7 +161,7 @@ export const logoutController = async (req: Request, res: Response) => {
     res.clearCookie("session", { ...cookieOptions, maxAge: undefined });
     return res.status(200).json({ message: "Logged out" });
   } catch (error: any) {
-    logger.error("logoutController:", error);
+    logger.error({ err: error }, "logoutController failed");
     return res.status(500).json({ message: "Something went wrong" });
   }
 };

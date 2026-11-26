@@ -14,6 +14,8 @@ import {
   updateSession,
 } from "./db.service.js";
 import { sendOtpEmail } from "../lib/mailer.js";
+import logger from "../lib/logger.js";
+import type { SafeUser, SessionWithUser } from "./db.service.js";
 
 // ---------- Settings (change them here, in one place) ----------
 
@@ -25,7 +27,7 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // wait between new codes
 // A fake hash, used so "no such user" takes as long as "wrong password".
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", BCRYPT_ROUNDS);
 
-// ---------- Types ----------
+// ---------- Payload types ----------
 
 export interface RegisterPayload {
   email: string;
@@ -61,6 +63,60 @@ export interface OtpVerifyPayload {
   code: string;
 }
 
+// ---------- What every function in this file returns ----------
+// success and message are ALWAYS there.
+// The "?" fields only exist when success is true.
+
+export interface RegisterResult {
+  success: boolean;
+  message: string;
+  user?: SafeUser;
+}
+
+export interface LoginResult {
+  success: boolean;
+  message: string;
+  user?: SafeUser;
+}
+
+export interface OtpSendResult {
+  success: boolean;
+  message: string;
+}
+
+export interface OtpRequestResult {
+  success: boolean;
+  message: string;
+}
+
+export interface OtpVerifyResult {
+  success: boolean;
+  message: string;
+  user?: SafeUser;
+}
+
+export interface SessionCreateResult {
+  success: boolean;
+  message: string;
+  session?: SessionWithUser;
+  rawToken?: string;
+}
+
+export interface CheckSessionResult {
+  success: boolean;
+  message: string;
+  session?: SessionWithUser;
+}
+
+export interface RevokeSessionResult {
+  success: boolean;
+  message: string;
+}
+
+// login returns this message when the email isn't verified yet.
+// The controller compares against it, so it lives in one place.
+export const EMAIL_NOT_VERIFIED_MESSAGE = "Email not verified";
+
 // ---------- Small helpers ----------
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -83,12 +139,16 @@ const safeEqual = (a: string, b: string) => {
 
 // ---------- OTP ----------
 
-export const otpSend = async ({ userId, email }: OtpSendPayload) => {
+export const otpSend = async ({
+  userId,
+  email,
+}: OtpSendPayload): Promise<OtpSendResult> => {
   // Don't let anyone spam a mailbox with codes.
-  const { otp: existing } = await getLatestOtp({ userId });
+  const latest = await getLatestOtp({ userId });
   if (
-    existing &&
-    Date.now() - existing.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS
+    latest.success &&
+    latest.otp &&
+    Date.now() - latest.otp.createdAt.getTime() < OTP_RESEND_COOLDOWN_MS
   ) {
     return {
       success: false,
@@ -103,17 +163,24 @@ export const otpSend = async ({ userId, email }: OtpSendPayload) => {
   await replaceOtp({ userId, codeHash, expiresAt });
   await sendOtpEmail({ to: email, code });
 
+  // DEV ONLY: lets you test without email. Delete once SMTP works.
+  if (process.env.NODE_ENV !== "production") {
+    logger.info({ code }, "DEV ONLY: otp code");
+  }
+
   return { success: true, message: "Code sent" };
 };
 
 // For the "send me a code" button (OTP login and resend).
 // Always gives the same answer, so nobody can use it to find out
 // which emails have accounts.
-export const otpRequest = async ({ email }: OtpRequestPayload) => {
-  const { user } = await getUserByEmail({ email: normalizeEmail(email) });
+export const otpRequest = async ({
+  email,
+}: OtpRequestPayload): Promise<OtpRequestResult> => {
+  const found = await getUserByEmail({ email: normalizeEmail(email) });
 
-  if (user) {
-    await otpSend({ userId: user.id, email: user.email });
+  if (found.success && found.user) {
+    await otpSend({ userId: found.user.id, email: found.user.email });
   }
 
   return {
@@ -123,33 +190,38 @@ export const otpRequest = async ({ email }: OtpRequestPayload) => {
 };
 
 // Checks the code. A correct code proves the person owns the inbox,
-// so it verifies the email (if needed) AND tells the controller to log in.
-export const otpVerify = async ({ email, code }: OtpVerifyPayload) => {
-  const invalid = { success: false, message: "Invalid or expired code" };
+// so it verifies the email (if needed) AND the controller then logs them in.
+export const otpVerify = async ({
+  email,
+  code,
+}: OtpVerifyPayload): Promise<OtpVerifyResult> => {
+  // One message for every kind of failure, so attackers learn nothing.
+  const invalid: OtpVerifyResult = {
+    success: false,
+    message: "Invalid or expired code",
+  };
 
-  const { user } = await getUserByEmail({ email: normalizeEmail(email) });
-  if (!user) {
-    return {
-      success: false,
-      message: "Invalid email",
-    };
-  }
+  const found = await getUserByEmail({ email: normalizeEmail(email) });
+  if (!found.success || !found.user) return invalid;
+  const user = found.user;
 
-  const { otp } = await getLatestOtp({ userId: user.id });
-  if (!otp) return invalid;
+  const latest = await getLatestOtp({ userId: user.id });
+  if (!latest.success || !latest.otp) return invalid;
+  const otp = latest.otp;
 
   if (otp.expiresAt <= new Date()) return invalid;
 
   // Count this guess first, then check. Counting first means even
   // many quick guesses at once can't beat the limit.
-  const { attempts } = await incrementOtpAttempts({ otpId: otp.id });
-  if (attempts > OTP_MAX_ATTEMPTS) return invalid;
+  const counted = await incrementOtpAttempts({ otpId: otp.id });
+  if (!counted.success || counted.attempts === undefined) return invalid;
+  if (counted.attempts > OTP_MAX_ATTEMPTS) return invalid;
 
   if (!safeEqual(hashOtp(user.id, code), otp.codeHash)) return invalid;
 
   // Use it up. If someone else used it a split second ago, this fails.
-  const { success: consumed } = await consumeOtp({ otpId: otp.id });
-  if (!consumed) return invalid;
+  const consumed = await consumeOtp({ otpId: otp.id });
+  if (!consumed.success) return invalid;
 
   if (!user.emailVerifiedAt) {
     await markEmailVerified({ userId: user.id });
@@ -157,44 +229,45 @@ export const otpVerify = async ({ email, code }: OtpVerifyPayload) => {
 
   return {
     success: true,
+    message: "Code verified",
     user: { ...user, emailVerifiedAt: user.emailVerifiedAt ?? new Date() },
   };
 };
 
 // ---------- Register / Login ----------
 
-export const register = async (payload: RegisterPayload) => {
+export const register = async (
+  payload: RegisterPayload,
+): Promise<RegisterResult> => {
   const { password, name } = payload;
   const email = normalizeEmail(payload.email);
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const result = await createUser({
+  const created = await createUser({
     email,
     passwordHash,
     ...(name && { name }),
   });
 
-  if (!result.success || !result.user) {
-    return {
-      success: false,
-      message: result.message ?? "Could not create account",
-    };
+  if (!created.success || !created.user) {
+    return { success: false, message: created.message };
   }
 
-  await otpSend({ userId: result.user.id, email: result.user.email });
+  await otpSend({ userId: created.user.id, email: created.user.email });
 
   return {
     success: true,
-    user: result.user,
     message: "Account created. Check your email for a code",
+    user: created.user,
   };
 };
 
-export const login = async (payload: LoginPayload) => {
+export const login = async (payload: LoginPayload): Promise<LoginResult> => {
   const { password } = payload;
   const email = normalizeEmail(payload.email);
 
-  const { user } = await getUserForAuthentication({ email });
+  const found = await getUserForAuthentication({ email });
+  const user = found.success ? found.user : undefined;
 
   // Always run bcrypt, even when there's no user, so the response
   // time doesn't give away which emails exist.
@@ -212,22 +285,20 @@ export const login = async (payload: LoginPayload) => {
     // the earlier one is still valid, so we ignore that result.
     await otpSend({ userId: user.id, email: user.email });
 
-    return {
-      success: false,
-      code: "EMAIL_NOT_VERIFIED",
-      message: "Email not verified",
-    };
+    return { success: false, message: EMAIL_NOT_VERIFIED_MESSAGE };
   }
 
   // Never hand the password hash back to the controller.
   const { passwordHash: _passwordHash, ...safeUser } = user;
 
-  return { success: true, user: safeUser };
+  return { success: true, message: "Login successful", user: safeUser };
 };
 
 // ---------- Sessions ----------
 
-export const sessionCreate = async (payload: SessionPayload) => {
+export const sessionCreate = async (
+  payload: SessionPayload,
+): Promise<SessionCreateResult> => {
   const { userId, expireInDays = 7 } = payload;
 
   const rawToken = crypto.randomBytes(32).toString("hex");
@@ -235,45 +306,55 @@ export const sessionCreate = async (payload: SessionPayload) => {
 
   const expiryDate = new Date(Date.now() + expireInDays * 24 * 60 * 60 * 1000);
 
-  const result = await createSession({ userId, expiryDate, tokenHash });
+  const created = await createSession({ userId, expiryDate, tokenHash });
 
-  return { ...result, rawToken };
+  if (!created.success || !created.session) {
+    return { success: false, message: created.message };
+  }
+
+  return {
+    success: true,
+    message: "Session created",
+    session: created.session,
+    rawToken,
+  };
 };
 
-export const checkSession = async ({ rawToken }: TokenPayload) => {
-  const { session } = await getSessionByToken({
-    tokenHash: hashToken(rawToken),
-  });
+export const checkSession = async ({
+  rawToken,
+}: TokenPayload): Promise<CheckSessionResult> => {
+  const found = await getSessionByToken({ tokenHash: hashToken(rawToken) });
 
-  if (!session) {
+  if (!found.success || !found.session) {
     return { success: false, message: "No session found" };
   }
+  const session = found.session;
 
-  if (session.revokedAt) {
-    return { success: false, message: "Session revoked" };
-  }
+  if (session.revokedAt) return { success: false, message: "Session revoked" };
 
   if (session.expiresAt <= new Date()) {
     return { success: false, message: "Session expired" };
   }
 
-  return { success: true, session };
+  return { success: true, message: "Session valid", session };
 };
 
-export const revokeSession = async ({ rawToken }: TokenPayload) => {
+export const revokeSession = async ({
+  rawToken,
+}: TokenPayload): Promise<RevokeSessionResult> => {
   const tokenHash = hashToken(rawToken);
 
-  const { session } = await getSessionByToken({ tokenHash });
-
-  if (!session) {
+  const found = await getSessionByToken({ tokenHash });
+  if (!found.success || !found.session) {
     return { success: false, message: "Session not found" };
   }
 
-  if (session.revokedAt) {
+  if (found.session.revokedAt) {
     return { success: true, message: "Session already revoked" };
   }
 
-  await updateSession({ tokenHash, revokedAt: new Date() });
+  const updated = await updateSession({ tokenHash, revokedAt: new Date() });
+  if (!updated.success) return { success: false, message: updated.message };
 
   return { success: true, message: "Session revoked successfully" };
 };
